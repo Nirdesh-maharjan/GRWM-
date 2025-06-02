@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartfitAI - Upload Photo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@0.0.6"></script>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            color: #fff;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background: #121212;
+            border-bottom: 1px solid #333;
+        }
+        .nav-link {
+            color: #8a2be2;
+            text-decoration: none;
+            margin-left: 20px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .nav-link:hover {
+            color: #b57aff;
+        }
+        .container {
+            max-width: 800px;
+            margin: 30px auto;
+            padding: 0 20px;
+            text-align: center;
+        }
+        .upload-container {
+            width: 100%;
+            max-width: 500px;
+            margin: 30px auto;
+            padding: 40px;
+            border: 2px dashed #8a2be2;
+            border-radius: 15px;
+            background-color: #1e1e1e;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .upload-container:hover {
+            background-color: #252525;
+            border-color: #b57aff;
+        }
+        .upload-icon {
+            font-size: 60px;
+            color: #8a2be2;
+            margin-bottom: 20px;
+        }
+        #imagePreview {
+            display: none;
+            max-width: 100%;
+            max-height: 500px;
+            border-radius: 15px;
+            margin: 20px auto;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .control-button {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 30px;
+            background: linear-gradient(45deg, #8a2be2, #4b0082);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 10px rgba(138, 43, 226, 0.4);
+        }
+        .control-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(138, 43, 226, 0.6);
+        }
+        .control-button.secondary {
+            background: #333;
+        }
+        .measurement-results {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 30px;
+            text-align: left;
+            display: none;
+        }
+        .measurement-value {
+            color: #8a2be2;
+            font-weight: 600;
+        }
+        #fileInput {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div style="font-size: 1.5rem; font-weight: 600; color: #8a2be2;">SmartfitAI</div>
+        <div>
+            <a href="camera.html" class="nav-link">Take Photo</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h1 class="text-3xl font-bold mb-4">Body Measurement</h1>
+        <p class="text-lg mb-8">Upload a photo for accurate body measurements</p>
+        
+        <input type="file" id="fileInput" accept="image/*">
+        <div class="upload-container" id="uploadContainer">
+            <div class="upload-icon">📁</div>
+            <h2 class="text-xl font-semibold mb-2">Drag & Drop Your Photo</h2>
+            <p class="text-gray-400">or click to browse files</p>
+        </div>
+        
+        <img id="imagePreview" alt="Uploaded photo preview">
+        
+        <div class="controls">
+            <button id="measureButton" class="control-button" style="display: none;">Get Measurements</button>
+            <button id="resetButton" class="control-button secondary" style="display: none;">Choose Different Photo</button>
+        </div>
+        
+        <div class="measurement-results" id="measurement-results">
+            <h3 class="text-xl font-semibold mb-4">Your Measurements</h3>
+            <div class="grid grid-cols-3 gap-4 mb-4">
+                <div>
+                    <p class="text-sm text-gray-400">Height</p>
+                    <p class="measurement-value text-2xl" id="height-cm">-</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Shoulder Width</p>
+                    <p class="measurement-value text-2xl" id="shoulder-cm">-</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Waist Width</p>
+                    <p class="measurement-value text-2xl" id="waist-cm">-</p>
+                </div>
+            </div>
+            <button id="continueButton" class="control-button w-full">Continue to Recommendations</button>
+        </div>
+    </div>
+
+    <script>
+        // DOM elements
+        const fileInput = document.getElementById('fileInput');
+        const uploadContainer = document.getElementById('uploadContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const measureButton = document.getElementById('measureButton');
+        const resetButton = document.getElementById('resetButton');
+        const measurementResults = document.getElementById('measurement-results');
+        const continueButton = document.getElementById('continueButton');
+        
+        let detector = null;
+        let userImage = null;
+        
+        // Initialize file upload
+        uploadContainer.addEventListener('click', () => fileInput.click());
+        
+        // Handle drag and drop
+        uploadContainer.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadContainer.style.backgroundColor = '#252525';
+            uploadContainer.style.borderColor = '#b57aff';
+        });
+        
+        uploadContainer.addEventListener('dragleave', () => {
+            uploadContainer.style.backgroundColor = '#1e1e1e';
+            uploadContainer.style.borderColor = '#8a2be2';
+        });
+        
+        uploadContainer.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadContainer.style.backgroundColor = '#1e1e1e';
+            uploadContainer.style.borderColor = '#8a2be2';
+            
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelect();
+            }
+        });
+        
+        // Handle file selection
+        fileInput.addEventListener('change', handleFileSelect);
+        
+        function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreview.src = e.target.result;
+                imagePreview.style.display = 'block';
+                userImage = imagePreview;
+                
+                uploadContainer.style.display = 'none';
+                measureButton.style.display = 'block';
+                resetButton.style.display = 'block';
+                measurementResults.style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        // Reset upload
+        resetButton.addEventListener('click', () => {
+            fileInput.value = '';
+            imagePreview.style.display = 'none';
+            uploadContainer.style.display = 'block';
+            measureButton.style.display = 'none';
+            resetButton.style.display = 'none';
+            measurementResults.style.display = 'none';
+        });
+        
+        // Measure body
+        measureButton.addEventListener('click', async () => {
+            measureButton.disabled = true;
+            measureButton.textContent = "Measuring...";
+            
+            try {
+                if (!detector) {
+                    const model = poseDetection.SupportedModels.MoveNet;
+                    detector = await poseDetection.createDetector(model, {
+                        modelType: poseDetection.movenet.modelType.SINGLEPOSE_THUNDER
+                    });
+                }
+                
+                const measurements = await getPoseMeasurements(userImage);
+                
+                if (measurements) {
+                    document.getElementById('height-cm').textContent = measurements.height.toFixed(1) + " cm";
+                    document.getElementById('shoulder-cm').textContent = measurements.shoulderWidth.toFixed(1) + " cm";
+                    document.getElementById('waist-cm').textContent = measurements.waistWidth.toFixed(1) + " cm";
+                    measurementResults.style.display = 'block';
+                } else {
+                    alert("Couldn't detect body measurements. Please ensure your full body is visible in the photo.");
+                }
+            } catch (error) {
+                console.error("Measurement error:", error);
+                alert("Error processing measurements. Please try again with a different photo.");
+            }
+            
+            measureButton.disabled = false;
+            measureButton.textContent = "Get Measurements";
+        });
+        
+        // Get pose measurements
+        async function getPoseMeasurements(imageElement) {
+            const poses = await detector.estimatePoses(imageElement);
+            if (poses.length === 0) return null;
+            
+            const keypoints = poses[0].keypoints;
+            const nose = keypoints.find(k => k.name === 'nose');
+            const leftAnkle = keypoints.find(k => k.name === 'left_ankle');
+            const leftShoulder = keypoints.find(k => k.name === 'left_shoulder');
+            const rightShoulder = keypoints.find(k => k.name === 'right_shoulder');
+            const leftHip = keypoints.find(k => k.name === 'left_hip');
+            const rightHip = keypoints.find(k => k.name === 'right_hip');
+            
+            if (!nose || !leftAnkle || !leftShoulder || !rightShoulder || !leftHip || !rightHip) {
+                return null;
+            }
+            
+            // Calculate pixel distances
+            const shoulderWidthPx = Math.sqrt(
+                Math.pow(rightShoulder.x - leftShoulder.x, 2) + 
+                Math.pow(rightShoulder.y - leftShoulder.y, 2)
+            );
+            
+            const waistWidthPx = Math.sqrt(
+                Math.pow(rightHip.x - leftHip.x, 2) + 
+                Math.pow(rightHip.y - leftHip.y, 2)
+            );
+            
+            const heightPx = leftAnkle.y - nose.y;
+            
+            // Convert to cm (using average ratios)
+            const pxToCmRatio = 170 / heightPx; // Assuming average height
+            
+            return {
+                height: heightPx * pxToCmRatio,
+                shoulderWidth: shoulderWidthPx * pxToCmRatio,
+                waistWidth: waistWidthPx * pxToCmRatio
+            };
+        }
+        
+        // Continue to recommendations
+        continueButton.addEventListener('click', () => {
+            localStorage.setItem('userMeasurements', JSON.stringify({
+                height: document.getElementById('height-cm').textContent,
+                shoulder: document.getElementById('shoulder-cm').textContent,
+                waist: document.getElementById('waist-cm').textContent
+            }));
+            window.location.href = "recommendations.html";
+        });
+    </script>
+</body>
+</html>
