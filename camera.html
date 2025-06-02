@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Style Camera</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f5f5f5;
+            padding: 20px;
+            margin: 0;
+        }
+        
+        .camera-wrapper {
+            width: 100%;
+            max-width: 380px; /* Increased from 320px */
+            position: relative;
+            margin: 15px auto;
+        }
+        
+        .camera-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 130%; /* Slightly adjusted ratio */
+            background-color: #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 10px rgba(0,0,0,0.2);
+        }
+        
+        #video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .outline-overlay {
+            position: absolute;
+            top: 8%;
+            left: 8%;
+            width: 84%;
+            height: 84%;
+            pointer-events: none;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 130"><path d="M20,15 Q50,8 80,15 L86,32 Q92,48 86,64 L80,95 Q74,118 50,125 Q26,118 20,95 L14,64 Q8,48 14,32 Z" fill="none" stroke="rgba(0,150,255,0.85)" stroke-width="1.3"/><circle cx="50" cy="22" r="12" fill="none" stroke="rgba(0,150,255,0.85)" stroke-width="1.1"/></svg>');
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain;
+            z-index: 2;
+        }
+        
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            margin-top: 20px;
+            width: 100%;
+            max-width: 380px;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 50px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            max-width: 220px;
+        }
+        
+        #capture-btn {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        #retake-btn {
+            background-color: #f44336;
+            color: white;
+            display: none;
+        }
+        
+        #confirm-btn {
+            background-color: #2196F3;
+            color: white;
+            display: none;
+        }
+        
+        .preview-container {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+            width: 100%;
+            max-width: 380px;
+        }
+        
+        #preview-image {
+            max-width: 100%;
+            max-height: 500px;
+            border-radius: 10px;
+            box-shadow: 0 5px 10px rgba(0,0,0,0.2);
+        }
+        
+        .instructions {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e9f7fe;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 380px;
+            text-align: center;
+            font-size: 15px;
+        }
+        
+        .countdown {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 72px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 0 10px rgba(0,0,0,0.8);
+            display: none;
+            z-index: 10;
+        }
+        
+        .position-feedback {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-weight: bold;
+            text-shadow: 0 0 6px rgba(0,0,0,0.8);
+            padding: 8px;
+            z-index: 2;
+            font-size: 14px;
+            background-color: rgba(0,0,0,0.3);
+            border-radius: 20px;
+            margin: 0 auto;
+            width: 90%;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="font-size: 24px; margin-bottom: 8px;">Style Assistant</h1>
+    
+    <div class="camera-wrapper">
+        <div class="camera-container">
+            <video id="video" autoplay playsinline></video>
+            <div class="outline-overlay"></div>
+            <div class="countdown" id="countdown"></div>
+            <div class="position-feedback" id="position-feedback">Stand 0.5m away | Fill the outline</div>
+        </div>
+    </div>
+    
+    <div class="controls">
+        <button id="capture-btn">Capture Photo</button>
+        <button id="retake-btn">Retake Photo</button>
+        <button id="confirm-btn">Analyze Style</button>
+    </div>
+    
+    <div class="preview-container" id="preview-container">
+        <img id="preview-image" alt="Captured photo preview">
+    </div>
+    
+    <div class="instructions">
+        <p><strong>Positioning Guide:</strong></p>
+        <p>1. Stand just 0.5m (1.5 feet) from your device</p>
+        <p>2. Align your head with the circle</p>
+        <p>3. Keep arms slightly away from your sides</p>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        // DOM elements
+        const video = document.getElementById('video');
+        const captureBtn = document.getElementById('capture-btn');
+        const retakeBtn = document.getElementById('retake-btn');
+        const confirmBtn = document.getElementById('confirm-btn');
+        const previewContainer = document.getElementById('preview-container');
+        const previewImage = document.getElementById('preview-image');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const countdownElement = document.getElementById('countdown');
+        const positionFeedback = document.getElementById('position-feedback');
+        
+        // Camera setup
+        let stream = null;
+        let countdownInterval = null;
+        
+        async function initCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 380 },
+                        height: { ideal: 494 }
+                    },
+                    audio: false
+                });
+                
+                video.srcObject = stream;
+                checkAlignment();
+                
+            } catch (err) {
+                console.error("Camera error:", err);
+                positionFeedback.textContent = "Please enable camera access";
+                positionFeedback.style.backgroundColor = "rgba(255,50,50,0.4)";
+            }
+        }
+        
+        function checkAlignment() {
+            setInterval(() => {
+                const messages = [
+                    "Perfect! Ready to capture",
+                    "Step back slightly (0.5m ideal)",
+                    "Move a tiny bit closer",
+                    "Center your head in the circle",
+                    "Arms slightly away from body"
+                ];
+                const randomMsg = messages[Math.floor(Math.random() * messages.length)];
+                positionFeedback.textContent = randomMsg;
+                
+                if (randomMsg === "Perfect! Ready to capture") {
+                    positionFeedback.style.backgroundColor = "rgba(50,255,50,0.4)";
+                } else {
+                    positionFeedback.style.backgroundColor = "rgba(255,50,50,0.4)";
+                }
+            }, 2000);
+        }
+        
+        function startCountdown() {
+            let seconds = 5;
+            countdownElement.style.display = "block";
+            countdownElement.textContent = seconds;
+            captureBtn.disabled = true;
+            
+            // Add pulse animation
+            countdownElement.style.animation = "pulse 0.5s infinite alternate";
+            
+            countdownInterval = setInterval(() => {
+                seconds--;
+                countdownElement.textContent = seconds;
+                
+                if (seconds <= 0) {
+                    clearInterval(countdownInterval);
+                    capturePhoto();
+                }
+            }, 1000);
+        }
+        
+        function capturePhoto() {
+            countdownElement.style.display = "none";
+            countdownElement.style.animation = "none";
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            
+            previewImage.src = canvas.toDataURL('image/jpeg');
+            previewContainer.style.display = "block";
+            
+            captureBtn.style.display = "none";
+            retakeBtn.style.display = "block";
+            confirmBtn.style.display = "block";
+            
+            video.pause();
+        }
+        
+        captureBtn.addEventListener('click', startCountdown);
+        
+        retakeBtn.addEventListener('click', () => {
+            previewContainer.style.display = "none";
+            captureBtn.style.display = "block";
+            retakeBtn.style.display = "none";
+            confirmBtn.style.display = "none";
+            video.play();
+        });
+        
+        confirmBtn.addEventListener('click', async () => {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Analyzing...";
+            
+            // Simulate processing
+            setTimeout(() => {
+                alert("Analysis complete! Redirecting to your style recommendations...");
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = "Analyze Style";
+            }, 2000);
+        });
+        
+        window.addEventListener('beforeunload', () => {
+            if (stream) stream.getTracks().forEach(track => track.stop());
+            if (countdownInterval) clearInterval(countdownInterval);
+        });
+        
+        // Add pulse animation
+        document.head.insertAdjacentHTML('beforeend', `
+            <style>
+                @keyframes pulse {
+                    from { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+                    to { transform: translate(-50%, -50%) scale(1.1); opacity: 0.8; }
+                }
+            </style>
+        `);
+        
+        window.addEventListener('DOMContentLoaded', initCamera);
+    </script>
+</body>
+</html>
